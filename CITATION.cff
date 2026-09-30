@@ -1,0 +1,63 @@
+cff-version: 1.2.0
+message: "If you use OpenTumorBoard in your research, please cite the paper in preferred-citation."
+type: software
+title: OpenTumorBoard
+url: "https://github.com/AnqiLi24/OpenTumorBoard"
+repository-code: "https://github.com/AnqiLi24/OpenTumorBoard"
+authors:
+  - family-names: Li
+    given-names: Anqi
+  - family-names: Ge
+    given-names: Zhixuan
+  - family-names: Duan
+    given-names: Yixuan
+  - family-names: Qian
+    given-names: Jiarong
+  - family-names: Chen
+    given-names: Chi-Yu
+  - family-names: Lu
+    given-names: MingYu
+  - family-names: Hsu
+    given-names: Huan-Yu
+  - family-names: Gu
+    given-names: Yu
+  - family-names: Guo
+    given-names: Yue
+  - family-names: Wang
+    given-names: Sheng
+  - family-names: Qiu
+    given-names: Wei
+  - family-names: Xu
+    given-names: Hanwen
+preferred-citation:
+  type: article
+  title: "OpenTumorBoard: A Real-World Benchmark of Multidisciplinary Tumor Board Discussion Trajectories"
+  authors:
+    - family-names: Li
+      given-names: Anqi
+    - family-names: Ge
+      given-names: Zhixuan
+    - family-names: Duan
+      given-names: Yixuan
+    - family-names: Qian
+      given-names: Jiarong
+    - family-names: Chen
+      given-names: Chi-Yu
+    - family-names: Lu
+      given-names: MingYu
+    - family-names: Hsu
+      given-names: Huan-Yu
+    - family-names: Gu
+      given-names: Yu
+    - family-names: Guo
+      given-names: Yue
+    - family-names: Wang
+      given-names: Sheng
+    - family-names: Qiu
+      given-names: Wei
+    - family-names: Xu
+      given-names: Hanwen
+  year: 2026
+  journal: "arXiv preprint arXiv:2609.32810"
+  doi: "10.48550/arXiv.2609.32810"
+  url: "https://arxiv.org/abs/2609.32810"

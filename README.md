@@ -205,3 +205,20 @@ its scripts there: `prepare_data.py` builds the training data, `start_judge.sh`
 serves the reward judge, `precompute_reference_scope.py` fills its cache, and
 `run_rl.sh` runs Dr.GRPO with the reward in `reward.py`. Each script lists its
 settings at the top.
+
+## Citation
+
+If you use OpenTumorBoard in your research, please cite the paper:
+
+```bibtex
+@misc{li2026opentumorboard,
+  title         = {{OpenTumorBoard}: A Real-World Benchmark of Multidisciplinary Tumor Board Discussion Trajectories},
+  author        = {Anqi Li and Zhixuan Ge and Yixuan Duan and Jiarong Qian and Chi-Yu Chen and MingYu Lu and Huan-Yu Hsu and Yu Gu and Yue Guo and Sheng Wang and Wei Qiu and Hanwen Xu},
+  year          = {2026},
+  eprint        = {2609.32810},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  doi           = {10.48550/arXiv.2609.32810},
+  url           = {https://arxiv.org/abs/2609.32810}
+}
+```
