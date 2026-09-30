@@ -1,0 +1,459 @@
+[
+ {
+  "setting": "Board Simulation",
+  "model_key": "gemini_3_7_flash",
+  "display_name": "Gemini 3.7 Flash",
+  "input": "image+caption",
+  "provider": "openrouter",
+  "model": "google/gemini-3.7-flash",
+  "revision": "openrouter_20260901",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "top_p": 1.0,
+   "seed": 0,
+   "temperature": 0.0,
+   "max_tokens": 65536,
+   "reasoning": {
+    "effort": "xhigh"
+   }
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "grok_4_6",
+  "display_name": "Grok 4.6",
+  "input": "image+caption",
+  "provider": "openrouter",
+  "model": "x-ai/grok-4.6",
+  "revision": "openrouter_20260901",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "top_p": 1.0,
+   "seed": 0,
+   "temperature": 0.0,
+   "max_tokens": 450000,
+   "reasoning": {
+    "effort": "xhigh"
+   }
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "qwen3_8_max",
+  "display_name": "Qwen3.8-Max",
+  "input": "image+caption",
+  "provider": "openrouter",
+  "model": "qwen/qwen3.8-max",
+  "revision": "openrouter_20260901",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "top_p": 1.0,
+   "seed": 0,
+   "temperature": 0.0,
+   "max_tokens": 131072,
+   "reasoning": {
+    "effort": "xhigh"
+   }
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "gpt_5_6_sol",
+  "display_name": "GPT-5.6 Sol",
+  "input": "image+caption",
+  "provider": "openrouter",
+  "model": "openai/gpt-5.6-sol",
+  "revision": "openrouter_20260901",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "top_p": 1.0,
+   "seed": 0,
+   "max_tokens": 128000,
+   "reasoning": {
+    "effort": "xhigh"
+   }
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "claude_opus_5",
+  "display_name": "Claude Opus 5",
+  "input": "image+caption",
+  "provider": "anthropic",
+  "model": "claude-opus-5",
+  "revision": "api_20260901",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "max_tokens": 128000,
+   "thinking": {
+    "type": "adaptive"
+   }
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "gemma4_31b_it_reasoning",
+  "display_name": "Gemma 4 31B IT",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "google/gemma-4-31b-it",
+  "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "deepseek_v4_flash_api_reasoning",
+  "display_name": "DeepSeek-V4-Flash",
+  "input": "caption",
+  "provider": "deepseek_api",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+  "prompt": "evaluation/prompts/board_simulation_caption.txt",
+  "test_input": "data/test_inputs/board_simulation.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": null,
+   "thinking": "enabled"
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "deepseek_v4_pro_reasoning",
+  "display_name": "DeepSeek-V4-Pro",
+  "input": "caption",
+  "provider": "deepseek_api",
+  "model": "deepseek-ai/DeepSeek-V4-Pro",
+  "revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+  "prompt": "evaluation/prompts/board_simulation_caption.txt",
+  "test_input": "data/test_inputs/board_simulation.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": null,
+   "thinking": "enabled"
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "ministral_3_14b_instruct_2512",
+  "display_name": "Ministral 3 14B Instruct 2512",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "mistralai/Ministral-3-14B-Instruct-2512",
+  "revision": "29439f81c2be264d8d393273f99e7db9c0961120",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "medgemma_27b_it",
+  "display_name": "MedGemma 27B IT",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "google/medgemma-27b-it",
+  "revision": "2d3e00ea38b50018bf5dd3aa1009457cd2d5a48f",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "llama4_scout",
+  "display_name": "Llama 4 Scout 17B-16E Instruct",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+  "revision": "92f3b1597a195b523d8d9e5700e57e4fbb8f20d3",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "meditron3_70b",
+  "display_name": "Meditron3 70B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "OpenMeditron/Meditron3-70B",
+  "revision": "1ec3a7ee2355e384149df2e4dd42fed41e7fd08f",
+  "prompt": "evaluation/prompts/board_simulation_caption.txt",
+  "test_input": "data/test_inputs/board_simulation.caption.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "huatuogpt_3_32b_reasoning",
+  "display_name": "HuatuoGPT-3-32B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "FreedomIntelligence/HuatuoGPT-3-32B",
+  "revision": "2f080fedb7d9cffa33b555f7d42563fa44960fec",
+  "prompt": "evaluation/prompts/board_simulation_caption.txt",
+  "test_input": "data/test_inputs/board_simulation.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 32768,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "medreason_8b",
+  "display_name": "MedReason-8B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "UCSC-VLAA/MedReason-8B",
+  "revision": "2730640542b2629e26bdc31938da7ee2a85ebd03",
+  "prompt": "evaluation/prompts/board_simulation_caption.txt",
+  "test_input": "data/test_inputs/board_simulation.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 65536,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "qwen2_5_vl_3b",
+  "display_name": "Qwen2.5-VL-3B-Instruct",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "revision": "66285546d2b821cf421d4f5eb2576359d3770cd3",
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 24576,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "qwen2_5_vl_3b_sft",
+  "display_name": "Qwen2.5-VL-3B + SFT",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct finetuned on the Board Simulation training split",
+  "revision": null,
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 24576,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Board Simulation",
+  "model_key": "qwen2_5_vl_3b_sft_rl",
+  "display_name": "Qwen2.5-VL-3B + SFT + RL",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct finetuned, then Dr.GRPO (step 430)",
+  "revision": null,
+  "prompt": "evaluation/prompts/board_simulation_image.txt",
+  "test_input": "data/test_inputs/board_simulation.image.jsonl",
+  "generation": {
+   "top_p": 1.0,
+   "seed": 0,
+   "temperature": 0.0,
+   "max_tokens": 24576
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "deepseek_v4_pro_reasoning",
+  "display_name": "DeepSeek-V4-Pro",
+  "input": "caption",
+  "provider": "deepseek_api",
+  "model": "deepseek-ai/DeepSeek-V4-Pro",
+  "revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+  "prompt": "evaluation/prompts/specialist_turn_caption.txt",
+  "test_input": "data/test_inputs/specialist_turn.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 8192,
+   "seed": null,
+   "thinking": "enabled"
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "deepseek_v4_flash_api_reasoning",
+  "display_name": "DeepSeek-V4-Flash",
+  "input": "caption",
+  "provider": "deepseek_api",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+  "prompt": "evaluation/prompts/specialist_turn_caption.txt",
+  "test_input": "data/test_inputs/specialist_turn.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 8192,
+   "seed": null,
+   "thinking": "enabled"
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "mm_gemma4_31b_it_reasoning",
+  "display_name": "Gemma 4 31B IT [multimodal]",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "google/gemma-4-31b-it",
+  "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+  "prompt": "evaluation/prompts/specialist_turn_image.txt",
+  "test_input": "data/test_inputs/specialist_turn.image.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 16384,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "mm_ministral_3_14b_instruct_2512",
+  "display_name": "Ministral 3 14B Instruct 2512 [multimodal]",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "mistralai/Ministral-3-14B-Instruct-2512",
+  "revision": "29439f81c2be264d8d393273f99e7db9c0961120",
+  "prompt": "evaluation/prompts/specialist_turn_image.txt",
+  "test_input": "data/test_inputs/specialist_turn.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 16384,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "meditron3_70b",
+  "display_name": "Meditron3 70B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "OpenMeditron/Meditron3-70B",
+  "revision": "1ec3a7ee2355e384149df2e4dd42fed41e7fd08f",
+  "prompt": "evaluation/prompts/specialist_turn_caption.txt",
+  "test_input": "data/test_inputs/specialist_turn.caption.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 8192,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "mm_llama4_scout",
+  "display_name": "Llama 4 Scout 17B-16E Instruct [multimodal]",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+  "revision": "92f3b1597a195b523d8d9e5700e57e4fbb8f20d3",
+  "prompt": "evaluation/prompts/specialist_turn_image.txt",
+  "test_input": "data/test_inputs/specialist_turn.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 16384,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "mm_medgemma_27b_it",
+  "display_name": "MedGemma 27B IT [multimodal]",
+  "input": "image+caption",
+  "provider": "local_vllm",
+  "model": "google/medgemma-27b-it",
+  "revision": "2d3e00ea38b50018bf5dd3aa1009457cd2d5a48f",
+  "prompt": "evaluation/prompts/specialist_turn_image.txt",
+  "test_input": "data/test_inputs/specialist_turn.image.jsonl",
+  "generation": {
+   "temperature": 0.0,
+   "top_p": 1.0,
+   "max_tokens": 16384,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "huatuogpt_3_32b_reasoning",
+  "display_name": "HuatuoGPT-3-32B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "FreedomIntelligence/HuatuoGPT-3-32B",
+  "revision": "2f080fedb7d9cffa33b555f7d42563fa44960fec",
+  "prompt": "evaluation/prompts/specialist_turn_caption.txt",
+  "test_input": "data/test_inputs/specialist_turn.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 8192,
+   "seed": 0
+  }
+ },
+ {
+  "setting": "Specialist Turn",
+  "model_key": "medreason_8b",
+  "display_name": "MedReason-8B",
+  "input": "caption",
+  "provider": "local_vllm",
+  "model": "UCSC-VLAA/MedReason-8B",
+  "revision": "2730640542b2629e26bdc31938da7ee2a85ebd03",
+  "prompt": "evaluation/prompts/specialist_turn_caption.txt",
+  "test_input": "data/test_inputs/specialist_turn.caption.jsonl",
+  "generation": {
+   "temperature": 0.6,
+   "top_p": 1.0,
+   "max_tokens": 8192,
+   "seed": 0
+  }
+ }
+]

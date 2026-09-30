@@ -1,0 +1,933 @@
+diff --git a/verl/experimental/agent_loop/agent_loop.py b/verl/experimental/agent_loop/agent_loop.py
+index 1240a891..d9703254 100644
+--- a/verl/experimental/agent_loop/agent_loop.py
++++ b/verl/experimental/agent_loop/agent_loop.py
+@@ -62,6 +62,7 @@ from verl.utils.skip import SkipManager
+ from verl.utils.tokenizer import (
+     build_multimodal_processor_inputs,
+     get_processor_token_id,
++    normalize_mm_processor_kwargs,
+ )
+ from verl.utils.tokenizer.continuous_token_wiring import create_continuous_token_builder
+ from verl.workers.config import (
+@@ -237,7 +238,9 @@ class AgentLoopBase(ABC):
+         self.dataset_cls = dataset_cls
+         self.data_config = data_config.config
+         self.apply_chat_template_kwargs = self.data_config.get("apply_chat_template_kwargs", {})
+-        self.mm_processor_kwargs = self.data_config.get("mm_processor_kwargs", {})
++        self.mm_processor_kwargs = normalize_mm_processor_kwargs(
++            self.data_config.get("mm_processor_kwargs", {})
++        )
+         # Continuous Token is the only rollout tokenization path for agent loops.
+         # The model family (boundary handling) is inferred by exact lookup of the
+         # root Hugging Face config's model_type. Unrecognized models use the
+@@ -479,7 +482,9 @@ class AgentLoopWorker:
+         self.processor = self.model_config.processor
+         hf_model_type = getattr(self.model_config.hf_config, "model_type", None)
+         self.hf_model_type: str | None = hf_model_type if isinstance(hf_model_type, str) else None
+-        self.mm_processor_kwargs = config.data.get("mm_processor_kwargs", {})
++        self.mm_processor_kwargs = normalize_mm_processor_kwargs(
++            config.data.get("mm_processor_kwargs", {})
++        )
+ 
+         # Online policy distillation
+         self.distillation_enabled = is_distillation_enabled(config.distillation)
+@@ -986,6 +991,10 @@ class AgentLoopWorker:
+                     "tool_extra_fields": np.array([o.extra_fields for o in outputs], dtype=object),
+                     "prompt_len": np.array([len(o.prompt_ids) for o in outputs]),
+                     "response_len": np.array([len(o.response_ids) for o in outputs]),
++                    # Async reward scoring runs before responses are padded to the
++                    # configured rollout width. Pass that width explicitly so the
++                    # reward can distinguish EOS termination from budget exhaustion.
++                    "response_length_limit": np.full(n, self.rollout_config.response_length, dtype=np.int64),
+                 }
+ 
+                 data = DataProto(
+diff --git a/verl/experimental/reward_loop/reward_manager/naive.py b/verl/experimental/reward_loop/reward_manager/naive.py
+index f28ecf37..32d46375 100644
+--- a/verl/experimental/reward_loop/reward_manager/naive.py
++++ b/verl/experimental/reward_loop/reward_manager/naive.py
+@@ -20,6 +20,23 @@ from verl.experimental.reward_loop.reward_manager.base import RewardManagerBase
+ from verl.utils.reward_score import default_compute_score
+ 
+ 
++def _resolve_response_truncation(
++    valid_response_length: int,
++    response_tensor_width: int,
++    configured_response_length: int | None = None,
++) -> tuple[int, bool]:
++    """Return the generation limit and whether the response filled it.
++
++    Async agent-loop rewards see an unpadded response, so its tensor width is
++    merely the generated length. Legacy batched rewards use a fixed-width tensor
++    and safely fall back to that width when no configured limit is supplied.
++    """
++    response_length_limit = (
++        response_tensor_width if configured_response_length is None else int(configured_response_length)
++    )
++    return response_length_limit, valid_response_length >= response_length_limit
++
++
+ @register("naive")
+ class NaiveRewardManager(RewardManagerBase):
+     """The reward manager."""
+@@ -37,11 +54,14 @@ class NaiveRewardManager(RewardManagerBase):
+         response_ids = data_item.batch["responses"]
+         response_length = response_ids.shape[-1]
+         valid_response_length = data_item.batch["attention_mask"][-response_length:].sum()
+-        valid_response_ids = response_ids[:valid_response_length]
++        valid_response_length_int = int(valid_response_length.item())
++        valid_response_ids = response_ids[:valid_response_length_int]
+ 
+         data_source = data_item.non_tensor_batch["data_source"]
+         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
+-        extra_info = data_item.non_tensor_batch.get("extra_info", {})
++        # Work on a row-local copy: reward functions may add diagnostics, and
++        # mutating the dataset-owned mapping leaks state across rollouts.
++        extra_info = dict(data_item.non_tensor_batch.get("extra_info", {}))
+         tool_extra_fields = data_item.non_tensor_batch.get("tool_extra_fields", None)
+         if tool_extra_fields is not None:
+             extra_info.update(tool_extra_fields.items())
+@@ -50,6 +70,19 @@ class NaiveRewardManager(RewardManagerBase):
+         rollout_reward_scores = data_item.non_tensor_batch.get("reward_scores", {})
+         extra_info["num_turns"] = num_turns
+         extra_info["rollout_reward_scores"] = rollout_reward_scores
++        configured_response_length = data_item.non_tensor_batch.get("response_length_limit", None)
++        if configured_response_length is not None and hasattr(configured_response_length, "item"):
++            configured_response_length = configured_response_length.item()
++        response_length_limit, response_truncated = _resolve_response_truncation(
++            valid_response_length_int,
++            response_length,
++            configured_response_length,
++        )
++        # Expose the actual generation-budget outcome so task rewards can
++        # distinguish a truncated transcript from an ordinary formatting mistake.
++        extra_info["valid_response_length"] = valid_response_length_int
++        extra_info["response_length_limit"] = response_length_limit
++        extra_info["response_truncated"] = response_truncated
+ 
+         response_str = await self.loop.run_in_executor(
+             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+diff --git a/verl/trainer/config/model/hf_model.yaml b/verl/trainer/config/model/hf_model.yaml
+index bef40f1d..65be2859 100644
+--- a/verl/trainer/config/model/hf_model.yaml
++++ b/verl/trainer/config/model/hf_model.yaml
+@@ -39,6 +39,15 @@ enable_activation_offload: False
+ # whether to use remove padding. Only valid when we use hf model definition
+ use_remove_padding: True
+ 
++# whether to freeze the visual encoder before full-parameter FSDP training
++freeze_vision_tower: False
++
++# whether to freeze the multimodal projector/merger before full-parameter FSDP training
++freeze_multi_modal_projector: False
++
++# optional exact trainable-parameter count checked before distributed wrapping
++expected_trainable_parameters: null
++
+ # Set to positive value to enable LoRA (e.g., 32)
+ lora_rank: 0
+ 
+diff --git a/verl/trainer/ppo/v1/trainer_base.py b/verl/trainer/ppo/v1/trainer_base.py
+index 1e7f18c9..acace664 100644
+--- a/verl/trainer/ppo/v1/trainer_base.py
++++ b/verl/trainer/ppo/v1/trainer_base.py
+@@ -61,6 +61,7 @@ from verl.trainer.ppo.metric_utils import (
+     process_validation_metrics,
+ )
+ from verl.trainer.ppo.padding_utils import upsample_batch_to_divisible_size
++from verl.trainer.ppo.policy_mask import build_marker_policy_mask
+ from verl.trainer.ppo.ray_trainer import apply_kl_penalty, compute_spec_decode_metrics
+ from verl.trainer.ppo.rollout_corr_helper import compute_rollout_correction_and_add_to_batch
+ from verl.trainer.ppo.utils import (
+@@ -72,7 +73,11 @@ from verl.trainer.ppo.utils import (
+     need_teacher_policy,
+ )
+ from verl.trainer.ppo.v1.replay_buffer import DAPO_FILTERED_REWARD_COUNTS_KEY, ReplayBuffer, ReplayBufferAsync
+-from verl.trainer.ppo.v1.utils import MetricsAggregator, compute_advantage_for_multi_trajectories
++from verl.trainer.ppo.v1.utils import (
++    MetricsAggregator,
++    compute_advantage_for_multi_trajectories,
++    compute_scalar_component_grpo_advantages,
++)
+ from verl.utils import tensordict_utils as tu
+ from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
+ from verl.utils.config import omega_conf_to_dataclass
+@@ -557,6 +562,10 @@ class PPOTrainer(ABC):
+         # 3. balance batch across data parallel groups
+         batch = self._balance_batch(batch, metrics=metrics)
+ 
++        # Optionally restrict policy gradient to a marked response span while
++        # retaining the original response_mask for KL and rollout correction.
++        batch = self._apply_policy_response_mask(batch, metrics=metrics)
++
+         # 4. compute old_log_prob
+         with marked_timer("old_log_prob", timing_raw, color="blue"):
+             batch = self._compute_old_log_prob(batch, metrics=metrics)
+@@ -1208,7 +1217,16 @@ class PPOTrainer(ABC):
+     def _log_rollout_data(self, batch: KVBatchMeta, timing_raw: dict, rollout_data_dir: str):
+         """Fetch rollout data from TransferQueue and dump sorted by uid."""
+         with marked_timer("dump_rollout_generations", timing_raw, color="green"):
+-            fields = ["uid", "prompts", "responses", "rm_scores", "reward_model"]
++            reward_extra_keys = getattr(self, "_rollout_reward_extra_keys", [])
++            fields = [
++                "uid",
++                "prompts",
++                "responses",
++                "rm_scores",
++                "reward_model",
++                "extra_fields",
++                *reward_extra_keys,
++            ]
+             data = tq.kv_batch_get(keys=batch.keys, partition_id=batch.partition_id, select_fields=fields)
+             data["prompts"] = data["prompts"].to_padded_tensor(padding=self.tokenizer.pad_token_id)
+             data["responses"] = data["responses"].to_padded_tensor(padding=self.tokenizer.pad_token_id)
+@@ -1224,6 +1242,12 @@ class PPOTrainer(ABC):
+             else:
+                 gts = [None] * len(uids)
+ 
++            # With async reward workers, components are attached by the agent
++            # loop under extra_fields rather than written as top-level TQ keys.
++            extra_fields = data.pop("extra_fields", None)
++            if extra_fields is not None:
++                extra_fields = extra_fields.tolist() if hasattr(extra_fields, "tolist") else list(extra_fields)
++
+             # Sort by uid key ({sample}_{rollout}_{output})
+             sort_keys = []
+             for key in batch.keys:
+@@ -1240,6 +1264,20 @@ class PPOTrainer(ABC):
+             scores = [scores[i] for i in sorted_indices]
+ 
+             reward_extra_infos_dict = {"uid": [batch.keys[i] for i in sorted_indices]}
++            if extra_fields is not None:
++                component_rows = []
++                for i in sorted_indices:
++                    item = extra_fields[i]
++                    component_rows.append(item.get("reward_extra_info", {}) if isinstance(item, dict) else {})
++                component_keys = set().union(*(row.keys() for row in component_rows))
++                for key in sorted(component_keys):
++                    reward_extra_infos_dict[key] = [row.get(key) for row in component_rows]
++            for key in reward_extra_keys:
++                values = data.pop(key, None)
++                if values is None:
++                    continue
++                values = values.tolist() if hasattr(values, "tolist") else list(values)
++                reward_extra_infos_dict[key] = [values[i] for i in sorted_indices]
+ 
+             self._dump_generations(
+                 inputs=inputs,
+@@ -1465,7 +1503,10 @@ class PPOTrainer(ABC):
+             layout=torch.jagged,
+         )
+         write_back = {"rm_scores": rm_scores}
+-        for key in rm_output.meta_info.get("reward_extra_keys", []):
++        reward_extra_keys = rm_output.meta_info.get("reward_extra_keys", [])
++        # Make all custom reward components available to rollout JSONL dumps.
++        self._rollout_reward_extra_keys = list(reward_extra_keys)
++        for key in reward_extra_keys:
+             write_back[key] = rm_output.non_tensor_batch[key]
+         tq.kv_batch_put(
+             keys=batch.keys,
+@@ -1587,6 +1628,66 @@ class PPOTrainer(ABC):
+ 
+         return batch
+ 
++    def _apply_policy_response_mask(self, batch: KVBatchMeta, metrics: dict) -> KVBatchMeta:
++        """Attach a marker-delimited policy mask without changing the full response mask."""
++
++        policy_config = self.config.actor_rollout_ref.actor.policy_loss
++        start_marker = policy_config.get("response_mask_start_marker", None)
++        if not start_marker:
++            return batch
++        end_marker = policy_config.get("response_mask_end_marker", None)
++        if not end_marker:
++            raise ValueError("response_mask_end_marker is required when response_mask_start_marker is set")
++
++        start_ids = self.tokenizer.encode(start_marker, add_special_tokens=False)
++        end_ids = self.tokenizer.encode(end_marker, add_special_tokens=False)
++        preceding_tokens = int(policy_config.get("response_mask_preceding_tokens", 0))
++        tail_tokens = int(policy_config.get("response_mask_missing_start_tail_tokens", 512))
++        data = tq.kv_batch_get(
++            keys=batch.keys,
++            partition_id=batch.partition_id,
++            select_fields=["responses", "response_mask"],
++        )
++
++        masks = []
++        found_starts = 0
++        found_ends = 0
++        fallback_count = 0
++        selected_tokens = 0
++        response_tokens = 0
++        for index in range(len(batch)):
++            result = build_marker_policy_mask(
++                data["responses"][index],
++                data["response_mask"][index],
++                start_ids,
++                end_ids,
++                preceding_tokens=preceding_tokens,
++                missing_start_tail_tokens=tail_tokens,
++            )
++            masks.append(result.mask)
++            found_starts += int(result.found_start)
++            found_ends += int(result.found_end)
++            fallback_count += int(result.used_tail_fallback)
++            selected_tokens += int(result.mask.sum().item())
++            response_tokens += int(data["response_mask"][index].sum().item())
++
++        policy_response_mask = torch.nested.as_nested_tensor(masks, layout=torch.jagged)
++        tq.kv_batch_put(
++            keys=batch.keys,
++            partition_id=batch.partition_id,
++            fields=TensorDict({"policy_response_mask": policy_response_mask}, batch_size=len(batch)),
++        )
++        denominator = max(len(batch), 1)
++        metrics.update(
++            {
++                "policy_mask/start_found_rate": found_starts / denominator,
++                "policy_mask/end_found_rate": found_ends / denominator,
++                "policy_mask/tail_fallback_rate": fallback_count / denominator,
++                "policy_mask/token_fraction": selected_tokens / max(response_tokens, 1),
++            }
++        )
++        return batch
++
+     def _compute_ref_log_prob(self, batch: KVBatchMeta, metrics: dict) -> KVBatchMeta:
+         """Compute the reference log prob of the batch."""
+         # 1. compute log probs
+@@ -1638,10 +1739,56 @@ class PPOTrainer(ABC):
+     def _compute_advantage(self, batch: KVBatchMeta, metrics: dict) -> KVBatchMeta:
+         """Compute the advantage of the batch."""
+         fields = ["uid", "response_mask", "rm_scores", "rollout_log_probs", "old_log_probs", "ref_log_prob", "values"]
+-        data = tq.kv_batch_get(keys=batch.keys, partition_id=batch.partition_id, select_fields=fields)
++        policy_config = self.config.actor_rollout_ref.actor.policy_loss
++        match_key = policy_config.get("split_advantage_match_key", None)
++        format_key = policy_config.get("split_advantage_format_key", None)
++        if bool(match_key) != bool(format_key):
++            raise ValueError("split_advantage_match_key and split_advantage_format_key must be set together")
++        split_advantages = bool(match_key)
++        if split_advantages:
++            if self.config.algorithm.adv_estimator != core_algos.AdvantageEstimator.GRPO:
++                raise ValueError("split component advantages currently support only GRPO")
++            if self.config.algorithm.use_kl_in_reward:
++                raise ValueError("split component advantages require algorithm.use_kl_in_reward=False")
++            if not policy_config.get("response_mask_start_marker", None):
++                raise ValueError("split component advantages require a marker-delimited policy response mask")
++            # Colocated reward workers expose components as top-level TQ
++            # fields.  Streaming/async reward workers keep them under
++            # extra_fields.reward_extra_info, so request both representations.
++            fields.extend(["extra_fields", match_key, format_key])
++
++        raw_data = tq.kv_batch_get(keys=batch.keys, partition_id=batch.partition_id, select_fields=fields)
++        component_values = {}
++        if split_advantages:
++            extra_fields = raw_data.pop("extra_fields", None)
++            if extra_fields is not None:
++                extra_fields = extra_fields.tolist() if hasattr(extra_fields, "tolist") else list(extra_fields)
++            for key in (match_key, format_key):
++                values = raw_data.pop(key, None)
++                if values is not None:
++                    values = values.tolist() if hasattr(values, "tolist") else list(values)
++                elif extra_fields is not None:
++                    values = []
++                    for item in extra_fields:
++                        item = getattr(item, "data", item)
++                        reward_extra_info = (
++                            item.get("reward_extra_info", {}) if isinstance(item, dict) else {}
++                        )
++                        if key not in reward_extra_info:
++                            raise KeyError(
++                                f"split advantage component '{key}' is missing from "
++                                "extra_fields.reward_extra_info"
++                            )
++                        values.append(reward_extra_info[key])
++                else:
++                    raise KeyError(
++                        f"split advantage component '{key}' is absent from both top-level TQ fields "
++                        "and extra_fields.reward_extra_info"
++                    )
++                component_values[key] = torch.as_tensor(values, dtype=torch.float32)
+ 
+-        response_mask = data["response_mask"]
+-        data = DataProto(batch=data.to_padded_tensor())
++        response_mask = raw_data["response_mask"]
++        data = DataProto(batch=raw_data.to_padded_tensor())
+         data.batch["token_level_scores"] = data.batch["rm_scores"]
+         data.non_tensor_batch["uid"] = np.array(data.batch.pop("uid").tolist(), dtype=object)
+ 
+@@ -1678,8 +1825,47 @@ class PPOTrainer(ABC):
+             config=self.config.algorithm,
+         )
+ 
++        if split_advantages:
++            norm_by_std = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
++            match_advantages = compute_scalar_component_grpo_advantages(
++                data,
++                batch.keys,
++                component_values[match_key],
++                num_repeat=self.config.actor_rollout_ref.rollout.n,
++                norm_adv_by_std_in_grpo=norm_by_std,
++                config=self.config.algorithm,
++            )
++            format_advantages = compute_scalar_component_grpo_advantages(
++                data,
++                batch.keys,
++                component_values[format_key],
++                num_repeat=self.config.actor_rollout_ref.rollout.n,
++                norm_adv_by_std_in_grpo=norm_by_std,
++                config=self.config.algorithm,
++            )
++            format_weight = float(policy_config.get("split_advantage_format_weight", 0.1))
++            data.batch["match_advantages"] = match_advantages
++            data.batch["format_advantages"] = format_advantages
++            # Retain a combined diagnostic advantage for the standard trainer
++            # metrics.  The actor uses the two components and masks separately.
++            data.batch["advantages"] = match_advantages + format_weight * format_advantages
++            data.batch["returns"] = data.batch["advantages"]
++            metrics.update(
++                {
++                    "split_advantage/match_abs_mean": float(
++                        match_advantages.abs().sum() / data.batch["response_mask"].sum().clamp_min(1)
++                    ),
++                    "split_advantage/format_abs_mean": float(
++                        format_advantages.abs().sum() / data.batch["response_mask"].sum().clamp_min(1)
++                    ),
++                    "split_advantage/format_weight": format_weight,
++                }
++            )
++
+         # 4. write nested advantages and returns back to TransferQueue
+         fields = ["advantages", "returns"]
++        if split_advantages:
++            fields.extend(["match_advantages", "format_advantages"])
+         if self.config.algorithm.use_kl_in_reward:
+             fields.append("token_level_rewards")
+         if rollout_correction:
+diff --git a/verl/trainer/ppo/v1/utils.py b/verl/trainer/ppo/v1/utils.py
+index e9dec313..513f5c75 100644
+--- a/verl/trainer/ppo/v1/utils.py
++++ b/verl/trainer/ppo/v1/utils.py
+@@ -215,3 +215,57 @@ def compute_advantage_for_multi_trajectories(
+     data.batch["advantages"] = scores
+     data.batch["returns"] = scores
+     return data
++
++
++def compute_scalar_component_grpo_advantages(
++    data: DataProto,
++    batch_keys: list[str],
++    component_scores: torch.Tensor,
++    *,
++    num_repeat: int = 1,
++    norm_adv_by_std_in_grpo: bool = True,
++    config: Any = None,
++) -> torch.Tensor:
++    """Normalize one scalar reward component per GRPO group and broadcast it to response tokens.
++
++    This deliberately normalizes each component independently.  Callers can then
++    apply the resulting advantages to different token masks without allowing a
++    high-variance reward component to erase a lower-variance component before
++    the policy loss is formed.
++    """
++
++    if component_scores.ndim != 1 or component_scores.shape[0] != len(data):
++        raise ValueError(
++            "component_scores must have shape (batch_size,), got "
++            f"{tuple(component_scores.shape)} for batch_size={len(data)}"
++        )
++    response_mask = data.batch["response_mask"]
++    response_lengths = response_mask.sum(dim=-1).to(torch.long)
++    if response_mask.shape[-1] == 0:
++        raise ValueError("split component advantages require a nonempty response-token dimension")
++
++    token_level_rewards = torch.zeros_like(response_mask, dtype=torch.float32)
++    row_indices = torch.arange(len(data), device=response_mask.device)
++    # An immediate-EOS rollout has an all-zero response mask.  It must still
++    # contribute its scalar reward to GRPO group normalization, while receiving
++    # no token gradient itself.  Store its scalar in column zero; the core GRPO
++    # routine sums rewards before multiplying the normalized scalar by the mask.
++    reward_indices = torch.clamp(response_lengths - 1, min=0)
++    token_level_rewards[row_indices, reward_indices] = component_scores.to(
++        device=response_mask.device, dtype=torch.float32
++    )
++    component_data = DataProto(
++        batch=data.batch.select("response_mask").clone(),
++        non_tensor_batch={"uid": data.non_tensor_batch["uid"].copy()},
++        meta_info=data.meta_info.copy(),
++    )
++    component_data.batch["token_level_rewards"] = token_level_rewards
++    component_data = compute_advantage_for_multi_trajectories(
++        component_data,
++        batch_keys=batch_keys,
++        adv_estimator=core_algos.AdvantageEstimator.GRPO,
++        num_repeat=num_repeat,
++        norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
++        config=config,
++    )
++    return component_data.batch["advantages"]
+diff --git a/verl/utils/tokenizer/__init__.py b/verl/utils/tokenizer/__init__.py
+index bc4544c0..f03a1893 100644
+--- a/verl/utils/tokenizer/__init__.py
++++ b/verl/utils/tokenizer/__init__.py
+@@ -17,6 +17,7 @@ from .tokenizer import (
+     get_processor_token_id,
+     hf_processor,
+     hf_tokenizer,
++    normalize_mm_processor_kwargs,
+     normalize_token_ids,
+ )
+ 
+@@ -26,4 +27,5 @@ __all__ = [
+     "normalize_token_ids",
+     "build_multimodal_processor_inputs",
+     "get_processor_token_id",
++    "normalize_mm_processor_kwargs",
+ ]
+diff --git a/verl/utils/tokenizer/tokenizer.py b/verl/utils/tokenizer/tokenizer.py
+index 65f528bb..66c85fa9 100644
+--- a/verl/utils/tokenizer/tokenizer.py
++++ b/verl/utils/tokenizer/tokenizer.py
+@@ -15,6 +15,7 @@
+ 
+ import types
+ import warnings
++from collections.abc import Mapping, Sequence
+ 
+ __all__ = [
+     "hf_tokenizer",
+@@ -22,9 +23,28 @@ __all__ = [
+     "normalize_token_ids",
+     "build_multimodal_processor_inputs",
+     "get_processor_token_id",
++    "normalize_mm_processor_kwargs",
+ ]
+ 
+ 
++def normalize_mm_processor_kwargs(value):
++    """Recursively convert Hydra containers to plain Python containers.
++
++    ``dict(DictConfig)`` only converts the outer mapping, leaving nested
++    ``DictConfig`` values behind. Transformers 5 validates nested image kwargs
++    strictly (notably ``size``), and vLLM must receive the identical plain
++    structure for rollout/actor preprocessing parity.
++    """
++
++    if value is None:
++        return {}
++    if isinstance(value, Mapping):
++        return {key: normalize_mm_processor_kwargs(item) for key, item in value.items()}
++    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
++        return [normalize_mm_processor_kwargs(item) for item in value]
++    return value
++
++
+ def normalize_token_ids(tokenized_output) -> list[int]:
+     """Normalize tokenizer outputs into a flat ``list[int]``.
+ 
+@@ -114,7 +134,7 @@ def build_multimodal_processor_inputs(
+     This keeps the existing VL flow intact while extending it with audio-aware
+     paths for processors that accept audio inputs.
+     """
+-    processor_kwargs = dict(mm_processor_kwargs or {})
++    processor_kwargs = normalize_mm_processor_kwargs(mm_processor_kwargs)
+     if audio is not None and "sampling_rate" not in processor_kwargs:
+         sampling_rate = getattr(getattr(processor, "feature_extractor", None), "sampling_rate", None)
+         if sampling_rate is not None:
+diff --git a/verl/workers/config/actor.py b/verl/workers/config/actor.py
+index 33328a24..975a62ab 100644
+--- a/verl/workers/config/actor.py
++++ b/verl/workers/config/actor.py
+@@ -99,6 +99,13 @@ class PolicyLossConfig(BaseConfig):
+     ppo_kl_coef: float = 0.1
+     dro_beta: Optional[float] = None
+     rollout_correction: RolloutCorrectionConfig = field(default_factory=RolloutCorrectionConfig)
++    response_mask_start_marker: Optional[str] = None
++    response_mask_end_marker: Optional[str] = None
++    response_mask_preceding_tokens: int = 0
++    response_mask_missing_start_tail_tokens: int = 512
++    split_advantage_match_key: Optional[str] = None
++    split_advantage_format_key: Optional[str] = None
++    split_advantage_format_weight: float = 0.1
+ 
+ 
+ @dataclass
+diff --git a/verl/workers/config/model.py b/verl/workers/config/model.py
+index 545ec468..d5d1167e 100644
+--- a/verl/workers/config/model.py
++++ b/verl/workers/config/model.py
+@@ -119,6 +119,17 @@ class HFModelConfig(BaseConfig):
+ 
+     use_remove_padding: bool = True
+ 
++    # Freeze the visual encoder during full-parameter VLM training. This is
++    # applied before FSDP wrapping and is independent of the VLM-LoRA settings.
++    freeze_vision_tower: bool = False
++
++    # Freeze the multimodal projector/merger during full-parameter VLM training.
++    freeze_multi_modal_projector: bool = False
++
++    # Optional fail-fast guard for experiments that require an exact trainable
++    # parameter scope after freezing/tied-weight resolution.
++    expected_trainable_parameters: Optional[int] = None
++
+     # TODO: unify fsdp and megatron lora config
+     # fsdp lora related. We may setup a separate config later
+     lora_rank: int = 0
+diff --git a/verl/workers/engine/fsdp/transformer_impl.py b/verl/workers/engine/fsdp/transformer_impl.py
+index d31c53a7..cf1b1383 100644
+--- a/verl/workers/engine/fsdp/transformer_impl.py
++++ b/verl/workers/engine/fsdp/transformer_impl.py
+@@ -313,6 +313,30 @@ class FSDPEngine(BaseEngine):
+             # some parameters may not in torch_dtype
+             module.to(torch_dtype)
+ 
++            from verl.models.transformers.vlm_freeze import freeze_vlm_submodules
++
++            freeze_report = freeze_vlm_submodules(
++                module,
++                freeze_vision_tower=self.model_config.freeze_vision_tower,
++                freeze_multi_modal_projector=self.model_config.freeze_multi_modal_projector,
++            )
++            if freeze_report.tensor_count:
++                trainable_params = sum(parameter.numel() for parameter in module.parameters() if parameter.requires_grad)
++                total_params = sum(parameter.numel() for parameter in module.parameters())
++                logger.info(
++                    "Frozen %s VLM tensors (%s parameters); trainable parameters: %s / %s",
++                    freeze_report.tensor_count,
++                    freeze_report.parameter_count,
++                    trainable_params,
++                    total_params,
++                )
++                expected_trainable = self.model_config.expected_trainable_parameters
++                if expected_trainable is not None and trainable_params != expected_trainable:
++                    raise ValueError(
++                        "Unexpected trainable parameter count after VLM freezing: "
++                        f"got {trainable_params}, expected {expected_trainable}"
++                    )
++
+             if self.model_config.enable_gradient_checkpointing:
+                 module.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+         return module
+diff --git a/verl/workers/utils/losses.py b/verl/workers/utils/losses.py
+index ebaa4e4d..1857ee6d 100644
+--- a/verl/workers/utils/losses.py
++++ b/verl/workers/utils/losses.py
+@@ -84,6 +84,14 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
+ 
+     # select fields and convert to padded tensor
+     fields = ["response_mask", "old_log_probs", "advantages"]
++    if "policy_response_mask" in data:
++        fields.append("policy_response_mask")
++    has_match_advantages = "match_advantages" in data
++    has_format_advantages = "format_advantages" in data
++    if has_match_advantages != has_format_advantages:
++        raise ValueError("match_advantages and format_advantages must be provided together")
++    if has_match_advantages:
++        fields.extend(["match_advantages", "format_advantages"])
+     if "rollout_is_weights" in data:
+         fields.append("rollout_is_weights")
+     if "ref_log_prob" in data:
+@@ -91,6 +99,7 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
+     data = data.select(*fields).to_padded_tensor()
+ 
+     response_mask = data["response_mask"].to(bool)
++    policy_response_mask = data.get("policy_response_mask", response_mask).to(bool)
+     # compute policy loss
+     old_log_prob = data["old_log_probs"]
+     advantages = data["advantages"]
+@@ -101,15 +110,45 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
+     loss_mode = config.policy_loss.get("loss_mode", "vanilla")
+ 
+     policy_loss_fn = get_policy_loss_fn(loss_mode)
+-    pg_loss, pg_metrics = policy_loss_fn(
+-        old_log_prob=old_log_prob,
+-        log_prob=log_prob,
+-        advantages=advantages,
+-        response_mask=response_mask,
+-        loss_agg_mode=loss_agg_mode,
+-        config=config,
+-        rollout_is_weights=rollout_is_weights,
+-    )
++    if has_match_advantages:
++        if "policy_response_mask" not in data:
++            raise ValueError("split component advantages require policy_response_mask")
++        match_pg_loss, match_pg_metrics = policy_loss_fn(
++            old_log_prob=old_log_prob,
++            log_prob=log_prob,
++            advantages=data["match_advantages"],
++            response_mask=policy_response_mask,
++            loss_agg_mode=loss_agg_mode,
++            config=config,
++            rollout_is_weights=rollout_is_weights,
++        )
++        format_pg_loss, format_pg_metrics = policy_loss_fn(
++            old_log_prob=old_log_prob,
++            log_prob=log_prob,
++            advantages=data["format_advantages"],
++            response_mask=response_mask,
++            loss_agg_mode=loss_agg_mode,
++            config=config,
++            rollout_is_weights=rollout_is_weights,
++        )
++        format_weight = float(config.policy_loss.get("split_advantage_format_weight", 0.1))
++        pg_loss = match_pg_loss + format_weight * format_pg_loss
++        pg_metrics = match_pg_metrics
++        format_pg_metrics = Metric.from_dict(format_pg_metrics, aggregation=AggregationType.MEAN)
++        metrics.update({f"format_{key}": value for key, value in format_pg_metrics.items()})
++        metrics["actor/pg_loss_match"] = Metric(value=match_pg_loss, aggregation=metric_aggregation)
++        metrics["actor/pg_loss_format"] = Metric(value=format_pg_loss, aggregation=metric_aggregation)
++        metrics["actor/format_advantage_weight"] = format_weight
++    else:
++        pg_loss, pg_metrics = policy_loss_fn(
++            old_log_prob=old_log_prob,
++            log_prob=log_prob,
++            advantages=advantages,
++            response_mask=policy_response_mask,
++            loss_agg_mode=loss_agg_mode,
++            config=config,
++            rollout_is_weights=rollout_is_weights,
++        )
+ 
+     # AggregationType.MEAN for pg metrics: assumes policy_loss_fn normalizes by local_bsz/local_tokens
+     # Ex: in compute_policy_loss_vanilla, pg_metrics are pg_clipfrac, ppo_kl, pg_clipfrac_lower
+@@ -117,12 +156,21 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
+ 
+     metrics.update(pg_metrics)
+     metrics["actor/pg_loss"] = Metric(value=pg_loss, aggregation=metric_aggregation)
++    policy_token_fraction = policy_response_mask.sum() / response_mask.sum().clamp_min(1)
++    metrics["actor/policy_token_fraction"] = Metric(
++        value=policy_token_fraction.detach(), aggregation=AggregationType.MEAN
++    )
++    if has_match_advantages:
++        metrics["actor/format_policy_token_fraction"] = Metric(
++            value=torch.ones_like(policy_token_fraction), aggregation=AggregationType.MEAN
++        )
+     policy_loss = pg_loss
+ 
+     # add entropy loss
+     if entropy is not None:
++        entropy_mask = response_mask if has_match_advantages else policy_response_mask
+         entropy_loss = agg_loss(
+-            loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
++            loss_mat=entropy, loss_mask=entropy_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
+         )
+         entropy_coeff = config.entropy_coeff
+         policy_loss -= entropy_coeff * entropy_loss
+diff --git a/verl/models/transformers/vlm_freeze.py b/verl/models/transformers/vlm_freeze.py
+new file mode 100644
+index 00000000..12243ac6
+--- /dev/null
++++ b/verl/models/transformers/vlm_freeze.py
+@@ -0,0 +1,105 @@
++"""Utilities for freezing well-defined VLM components before distributed wrapping."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import torch
++
++
++@dataclass(frozen=True)
++class FreezeReport:
++    """Summary of parameters frozen by :func:`freeze_vlm_submodules`."""
++
++    tensor_count: int
++    parameter_count: int
++    prefixes: tuple[str, ...]
++
++
++_QWEN_VL_PREFIXES = {
++    "vision": (
++        # Transformers <= 4.x layout.
++        "visual.patch_embed",
++        "visual.blocks",
++        # Transformers 5.x layout.
++        "model.visual.patch_embed",
++        "model.visual.blocks",
++    ),
++    "projector": (
++        "visual.merger",
++        "model.visual.merger",
++    ),
++}
++
++_MODEL_PREFIXES = {
++    "qwen2_vl": _QWEN_VL_PREFIXES,
++    "qwen2_5_vl": _QWEN_VL_PREFIXES,
++}
++
++
++def _matches_prefix(name: str, prefix: str) -> bool:
++    return name == prefix or name.startswith(prefix + ".")
++
++
++def freeze_vlm_submodules(
++    model: torch.nn.Module,
++    *,
++    freeze_vision_tower: bool = False,
++    freeze_multi_modal_projector: bool = False,
++) -> FreezeReport:
++    """Freeze selected VLM components and fail rather than silently matching nothing.
++
++    The operation runs before FSDP/FSDP2 wrapping.  Prefixes intentionally cover
++    both the Transformers 4.x and 5.x Qwen-VL module layouts so checkpoints can be
++    swept without changing the set of trainable parameters across environments.
++    """
++
++    requested = []
++    if freeze_vision_tower:
++        requested.append("vision")
++    if freeze_multi_modal_projector:
++        requested.append("projector")
++    if not requested:
++        return FreezeReport(tensor_count=0, parameter_count=0, prefixes=())
++
++    model_type = getattr(getattr(model, "config", None), "model_type", None)
++    if model_type not in _MODEL_PREFIXES:
++        raise ValueError(
++            f"Freezing VLM components is not defined for model_type={model_type!r}; "
++            f"supported model types: {sorted(_MODEL_PREFIXES)}"
++        )
++
++    prefix_groups = _MODEL_PREFIXES[model_type]
++    active_prefixes = tuple(prefix for group in requested for prefix in prefix_groups[group])
++    matched_by_group = {group: 0 for group in requested}
++    tensor_count = 0
++    parameter_count = 0
++
++    for name, parameter in model.named_parameters():
++        matched_group = next(
++            (
++                group
++                for group in requested
++                if any(_matches_prefix(name, prefix) for prefix in prefix_groups[group])
++            ),
++            None,
++        )
++        if matched_group is None:
++            continue
++        parameter.requires_grad_(False)
++        matched_by_group[matched_group] += 1
++        tensor_count += 1
++        parameter_count += parameter.numel()
++
++    missing = [group for group, count in matched_by_group.items() if count == 0]
++    if missing:
++        raise ValueError(
++            f"Requested VLM freeze groups matched no parameters: {missing}; "
++            f"model_type={model_type!r}, prefixes={active_prefixes}"
++        )
++
++    return FreezeReport(
++        tensor_count=tensor_count,
++        parameter_count=parameter_count,
++        prefixes=active_prefixes,
++    )
+diff --git a/verl/trainer/ppo/policy_mask.py b/verl/trainer/ppo/policy_mask.py
+new file mode 100644
+index 00000000..f160ead2
+--- /dev/null
++++ b/verl/trainer/ppo/policy_mask.py
+@@ -0,0 +1,101 @@
++# Copyright 2026 Bytedance Ltd. and/or its affiliates
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Utilities for restricting policy-gradient loss to a marked response span."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import torch
++
++
++@dataclass(frozen=True)
++class MarkerMaskResult:
++    """A policy mask plus marker-detection diagnostics."""
++
++    mask: torch.Tensor
++    found_start: bool
++    found_end: bool
++    used_tail_fallback: bool
++
++
++def find_token_subsequence(sequence: torch.Tensor, pattern: list[int], start: int = 0) -> int | None:
++    """Return the first exact token-subsequence position at or after ``start``."""
++
++    if sequence.ndim != 1:
++        raise ValueError(f"sequence must be one-dimensional, got shape={tuple(sequence.shape)}")
++    if not pattern:
++        raise ValueError("pattern must contain at least one token")
++    if start < 0:
++        raise ValueError(f"start must be nonnegative, got {start}")
++    stop = sequence.numel() - len(pattern) + 1
++    if start >= stop:
++        return None
++    pattern_tensor = torch.as_tensor(pattern, dtype=sequence.dtype, device=sequence.device)
++    for index in range(start, stop):
++        if torch.equal(sequence[index : index + len(pattern)], pattern_tensor):
++            return index
++    return None
++
++
++def build_marker_policy_mask(
++    response_ids: torch.Tensor,
++    response_mask: torch.Tensor,
++    start_marker_ids: list[int],
++    end_marker_ids: list[int],
++    *,
++    preceding_tokens: int = 0,
++    missing_start_tail_tokens: int = 512,
++) -> MarkerMaskResult:
++    """Mask a marked response span while retaining a bounded malformed-output fallback.
++
++    The selected span includes up to ``preceding_tokens`` valid tokens before the
++    start marker and both marker sequences. If the start marker exists but
++    the end marker does not, the mask extends through the final valid response token.
++    If the start marker is absent, only the last ``missing_start_tail_tokens`` valid
++    tokens participate in policy gradient so malformed samples still supply a signal
++    without supervising the whole response.
++    """
++
++    if response_ids.ndim != 1 or response_mask.ndim != 1:
++        raise ValueError("response_ids and response_mask must be one-dimensional")
++    if response_ids.shape != response_mask.shape:
++        raise ValueError(
++            f"response_ids and response_mask must have the same shape, got "
++            f"{tuple(response_ids.shape)} and {tuple(response_mask.shape)}"
++        )
++    if missing_start_tail_tokens <= 0:
++        raise ValueError("missing_start_tail_tokens must be positive")
++    if preceding_tokens < 0:
++        raise ValueError("preceding_tokens must be nonnegative")
++
++    valid_positions = torch.nonzero(response_mask.to(bool), as_tuple=False).flatten()
++    output = torch.zeros_like(response_mask)
++    if valid_positions.numel() == 0:
++        return MarkerMaskResult(output, False, False, True)
++
++    valid_length = int(valid_positions[-1].item()) + 1
++    valid_ids = response_ids[:valid_length]
++    start_index = find_token_subsequence(valid_ids, start_marker_ids)
++    if start_index is None:
++        fallback_start = max(0, valid_length - missing_start_tail_tokens)
++        output[fallback_start:valid_length] = response_mask[fallback_start:valid_length]
++        return MarkerMaskResult(output, False, False, True)
++
++    end_index = find_token_subsequence(valid_ids, end_marker_ids, start=start_index + len(start_marker_ids))
++    span_end = valid_length if end_index is None else end_index + len(end_marker_ids)
++    span_start = max(0, start_index - preceding_tokens)
++    output[span_start:span_end] = response_mask[span_start:span_end]
++    return MarkerMaskResult(output, True, end_index is not None, False)

@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "clinical_equivalence_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "critical_error": {"type": "boolean"},
+    "unsupported_claim": {"type": "boolean"},
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    }
+  },
+  "required": [
+    "clinical_equivalence_score",
+    "critical_error",
+    "unsupported_claim",
+    "rationale"
+  ],
+  "additionalProperties": false
+}

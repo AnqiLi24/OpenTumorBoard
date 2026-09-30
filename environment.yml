@@ -1,0 +1,25 @@
+# Conda environment for the curation pipeline (equivalent to scripts/pipeline/setup_mtb_env.sh).
+# Create with:  conda env create -f environment.yml
+name: mtb
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - torch==2.4.1
+      - torchvision==0.19.1
+      - torchaudio==2.4.1
+      - whisperx
+      - pyannote.audio
+      - opencv-python-headless
+      - scenedetect[opencv]
+      - transformers
+      - Pillow
+      - sam2
+      - groundingdino-py
+      - yt-dlp
+      - openai
+      - azure-identity
+      - pydantic>=2.0

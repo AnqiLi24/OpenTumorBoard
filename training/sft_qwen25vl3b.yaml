@@ -1,0 +1,42 @@
+# Supervised finetuning of Qwen2.5-VL-3B on Board Simulation (LLaMA-Factory).
+# Every parameter is trained except the vision tower and the projector.
+# One GPU, effective batch 8 (1 x 8 accumulation), 50 epochs.
+model_name_or_path: Qwen/Qwen2.5-VL-3B-Instruct   # revision 66285546d2b821cf421d4f5eb2576359d3770cd3
+trust_remote_code: true
+stage: sft
+do_train: true
+finetuning_type: full
+freeze_vision_tower: true
+freeze_multi_modal_projector: true
+
+dataset_dir: training/data
+dataset: otb_board_sft_train
+eval_dataset: otb_board_sft_validation
+template: qwen2_vl
+cutoff_len: 128000
+image_max_pixels: 589824
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+enable_liger_kernel: true
+flash_attn: fa2
+bf16: true
+gradient_checkpointing: true
+
+output_dir: outputs/sft_qwen25vl3b
+overwrite_output_dir: true
+save_only_model: true
+save_strategy: "no"   # the final model is written when training ends
+logging_steps: 5
+plot_loss: true
+report_to: none
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+num_train_epochs: 50.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+seed: 20260811
+eval_strategy: "no"

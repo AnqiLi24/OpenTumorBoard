@@ -1,0 +1,14 @@
+{
+  "otb_board_sft_train": {
+    "file_name": "board_sft_train.jsonl",
+    "formatting": "sharegpt",
+    "columns": {"messages": "conversations", "images": "images"},
+    "tags": {"role_tag": "from", "content_tag": "value", "user_tag": "human", "assistant_tag": "gpt", "system_tag": "system"}
+  },
+  "otb_board_sft_validation": {
+    "file_name": "board_sft_validation.jsonl",
+    "formatting": "sharegpt",
+    "columns": {"messages": "conversations", "images": "images"},
+    "tags": {"role_tag": "from", "content_tag": "value", "user_tag": "human", "assistant_tag": "gpt", "system_tag": "system"}
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "therapy": {"type": "integer", "enum": [-1, 1, 2, 3, 4, 5]},
+    "surgery": {"type": "integer", "enum": [-1, 1, 2, 3, 4, 5]},
+    "next_action": {"type": "integer", "enum": [-1, 1, 2, 3, 4, 5]},
+    "clinical_trial": {"type": "integer", "enum": [-1, 1, 2, 3, 4, 5]},
+    "rationale": {"type": "string", "minLength": 1, "maxLength": 1200}
+  },
+  "required": ["therapy", "surgery", "next_action", "clinical_trial", "rationale"],
+  "additionalProperties": false
+}

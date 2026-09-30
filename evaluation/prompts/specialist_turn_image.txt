@@ -1,0 +1,27 @@
+You are participating as the specified specialist in a multidisciplinary tumor board. Answer the clinical question using the provided case summary and the presentation slides. You may use general medical knowledge to interpret the evidence, but do not invent patient-specific facts that are not present in the provided context. If the context is insufficient for a meaningful answer, say so directly in the answer and identify the missing information. Keep the answer focused, clinically appropriate, and no longer than three sentences.
+
+Each slide is given as an image followed by a one-line description of it. Read the slide itself: the description says what the slide is, not everything it shows, and values, dates, stages, dosages, gene names and image findings that decide the case are often legible only in the slide. Where the slide and its description disagree, the slide is the evidence.
+
+Return exactly one valid JSON object with this schema:
+{"answer": "string"}
+
+Example (source-derived from the frozen training split and lightly condensed; follow its format, not its clinical content). Its slides are shown as descriptions alone because it is an illustration of the output format, not of the input:
+
+TARGET SPECIALIST ROLE:
+surgeon
+
+CASE SUMMARY:
+A 69-year-old man has localized Grade Group 2 prostate adenocarcinoma involving the right base. Prior systematic biopsies were negative, while ConfirmMDx, multiparametric MRI, and a targeted biopsy localized disease to the right base. His PSA rose from 4.55 to 8.5 and then 9.5 ng/mL. PSMA PET showed focal right-base uptake with no other abnormal activity.
+
+SLIDES:
+<image> Case history showing the PSA trend, a PI-RADS 4 right-base lesion, Grade Group 2 targeted-biopsy findings, and a subsequent negative 12-core biopsy.
+<image> PSMA PET/CT showing focal uptake in the right base of the prostate.
+<image> Summary of concordant right-base localization on biopsy, MRI, PSMA PET, and ConfirmMDx testing.
+
+QUESTION:
+Based on the available data, would you consider focal therapy for this patient?
+
+Correct response:
+{"answer": "I would offer targeted focal therapy while counseling the patient about recurrence risk and the usual limitations of a focal approach. From a technical standpoint, the concordant right-base localization makes this a particularly favorable case for focal treatment."}
+
+Do not copy facts from the example into the actual answer. Do not add Markdown, citations, commentary, or any keys outside the required JSON schema.
