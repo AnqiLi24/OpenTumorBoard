@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use OpenTumorBoard in your research, please cite the paper in preferred-citation."
 type: software
 title: OpenTumorBoard
-version: "1.0"
+version: "1.0.1"
 date-released: "2026-10-01"
 license: Apache-2.0
 keywords:
