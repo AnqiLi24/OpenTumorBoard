@@ -1,0 +1,75 @@
+name: Leaderboard submission
+description: Submit a model's results on the OpenTumorBoard test split.
+title: "[Submission] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run the generation and judging commands in the README, then share the results here.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Name and version, with a link to the weights or the API documentation.
+      placeholder: "Qwen3-32B (https://huggingface.co/Qwen/Qwen3-32B)"
+    validations:
+      required: true
+  - type: input
+    id: organization
+    attributes:
+      label: Organization
+      description: The developer of the model.
+    validations:
+      required: true
+  - type: checkboxes
+    id: tasks
+    attributes:
+      label: Tasks
+      options:
+        - label: Board Simulation
+        - label: Specialist Turn
+  - type: dropdown
+    id: input
+    attributes:
+      label: Input
+      options:
+        - Slide captions
+        - Slide images
+    validations:
+      required: true
+  - type: dropdown
+    id: reasoning
+    attributes:
+      label: Reasoning mode
+      options:
+        - Non-reasoning
+        - Reasoning
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Generation settings
+      description: Prompt files, decoding parameters (temperature, top-p, maximum tokens), reasoning effort and serving stack.
+    validations:
+      required: true
+  - type: textarea
+    id: scores
+    attributes:
+      label: Judge summaries
+      description: The contents of judge/board/summary.json and judge/turn/summary.json.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: responses
+    attributes:
+      label: Responses
+      description: Links to the responses.jsonl files from runs/board and runs/turn, for example a Hugging Face dataset or a release asset.
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: Paper or contact
+      description: Optional.
