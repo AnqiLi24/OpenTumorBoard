@@ -2,6 +2,17 @@ cff-version: 1.2.0
 message: "If you use OpenTumorBoard in your research, please cite the paper in preferred-citation."
 type: software
 title: OpenTumorBoard
+version: "1.0"
+date-released: "2026-10-01"
+license: Apache-2.0
+keywords:
+  - benchmark
+  - large language models
+  - LLM evaluation
+  - LLM-as-a-judge
+  - oncology
+  - tumor board
+  - clinical reasoning
 url: "https://github.com/AnqiLi24/OpenTumorBoard"
 repository-code: "https://github.com/AnqiLi24/OpenTumorBoard"
 authors:

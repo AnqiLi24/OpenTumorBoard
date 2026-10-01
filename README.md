@@ -1,6 +1,14 @@
 # OpenTumorBoard
 
-**[Paper](https://arxiv.org/abs/2609.32810) · [Dataset](https://huggingface.co/datasets/al1219/OpenTumorBoard) · [Leaderboard](https://huggingface.co/spaces/al1219/OpenTumorBoard-Leaderboard)**
+[![arXiv](https://img.shields.io/badge/arXiv-2609.32810-b31b1b.svg)](https://arxiv.org/abs/2609.32810)
+[![Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-OpenTumorBoard-ffcc4d.svg)](https://huggingface.co/datasets/al1219/OpenTumorBoard)
+[![Leaderboard](https://img.shields.io/badge/%F0%9F%8F%86%20Leaderboard-Hugging%20Face-4b8bbe.svg)](https://huggingface.co/spaces/al1219/OpenTumorBoard-Leaderboard)
+[![Code license: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-2ea44f.svg)](LICENSE)
+[![Data license: CC BY 4.0](https://img.shields.io/badge/data-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+
+<p align="center">
+  <img src="assets/figure1.webp" alt="OpenTumorBoard overview: 611 patient cases from recorded tumor boards, ten specialist roles, and the two tasks, Specialist Turn and Board Simulation" width="100%">
+</p>
 
 OpenTumorBoard is a benchmark of real multidisciplinary tumor board discussions,
 built from 219 publicly recorded meetings: 611 patient cases, 19,157 specialist
@@ -18,13 +26,25 @@ and training code. Benchmark records are distributed through
 the Hugging Face dataset linked above, not bundled in this repository. Run every
 command from the repository root.
 
-## Interactive leaderboard
+## Leaderboard
 
 [Open the interactive leaderboard](https://huggingface.co/spaces/al1219/OpenTumorBoard-Leaderboard) to explore the
 aggregate results for the paper's 14 Board Simulation and 9 Specialist Turn
-baseline model configurations.
+baseline model configurations. The top five on the test split, scored by the
+paper's judge on a 1–5 scale (higher is better):
 
-The leaderboard is hosted on Hugging Face and is not bundled in this repository.
+| Rank | Board Simulation | Conclusion alignment | Specialist Turn | Clinical equivalence |
+|---:|---|---:|---|---:|
+| 1 | Gemini 3.7 Flash | 2.783 | DeepSeek-V4-Pro | 3.427 |
+| 2 | Grok 4.6 | 2.582 | DeepSeek-V4-Flash | 3.328 |
+| 3 | Qwen3.8-Max | 2.565 | Gemma 4 31B IT | 3.080 |
+| 4 | GPT-5.6 Sol | 2.533 | Ministral 3 14B Instruct 2512 | 3.015 |
+| 5 | Claude Opus 5 | 2.527 | Meditron3 70B | 3.014 |
+
+The leaderboard lists the input and reasoning settings of every configuration,
+along with the remaining metrics. It is hosted on Hugging Face and is not
+bundled in this repository. To add a model, see
+[Submitting to the leaderboard](#submitting-to-the-leaderboard).
 
 ## Installation
 
@@ -38,6 +58,22 @@ Sign in to [the Hugging Face dataset](https://huggingface.co/datasets/al1219/Ope
 and accept its access conditions. Download its `data/` directory into the root
 of this repository, preserving the directory structure. Access is automatically
 approved; the dataset's access controls remain on Hugging Face.
+
+With the Hugging Face CLI (`pip install -U huggingface_hub`):
+
+```bash
+hf auth login
+hf download al1219/OpenTumorBoard --repo-type dataset --include "data/*" --local-dir .
+```
+
+The records can also be loaded directly with `datasets`:
+
+```python
+from datasets import load_dataset
+
+cases = load_dataset("al1219/OpenTumorBoard", "board_simulation", split="test")
+questions = load_dataset("al1219/OpenTumorBoard", "specialist_turn", split="test")
+```
 
 The hosted release contains processed records, slide captions and source
 references. It includes caption-input manifests, not image-input manifests or
@@ -140,6 +176,13 @@ The judge sees every slide as an image, so judging needs the slide images even
 for a text-only model. `evaluation/paper_configurations.json` lists the input,
 prompt and decoding settings of every model in the paper.
 
+## Submitting to the leaderboard
+
+Run the generation and judging commands under [Evaluation](#evaluation), then
+open a [leaderboard submission](https://github.com/AnqiLi24/OpenTumorBoard/issues/new?template=leaderboard_submission.yml)
+issue with the model details, the generation settings, the judge summaries
+(`judge/*/summary.json`) and links to the `responses.jsonl` files.
+
 ## Curation pipeline
 
 Search and filtering outputs are generated locally and are not included in this
@@ -205,6 +248,14 @@ its scripts there: `prepare_data.py` builds the training data, `start_judge.sh`
 serves the reward judge, `precompute_reference_scope.py` fills its cache, and
 `run_rl.sh` runs Dr.GRPO with the reward in `reward.py`. Each script lists its
 settings at the top.
+
+## License
+
+The code in this repository is released under the [Apache License 2.0](LICENSE).
+The benchmark annotations on Hugging Face are released under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The source
+recordings, slides and transcripts are not redistributed and remain subject to
+the rights and terms of their owners.
 
 ## Citation
 
