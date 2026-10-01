@@ -11,7 +11,7 @@
 </p>
 
 OpenTumorBoard is a benchmark of real multidisciplinary tumor board discussions,
-built from 219 publicly recorded meetings: 611 patient cases, 19,157 specialist
+built from 219 publicly recorded meetings: 611 patient cases, 19,157 discussion
 turns, and 16,215 questions put to specialists during the meetings. It evaluates
 LLMs in two settings:
 
